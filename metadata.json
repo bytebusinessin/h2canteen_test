@@ -1,0 +1,6 @@
+{
+  "name": "Aromas Vendor Dashboard",
+  "description": "An interactive kitchen order display and operations management panel for Aromas Dhaba.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
