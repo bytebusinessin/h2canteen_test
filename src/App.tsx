@@ -131,10 +131,8 @@ export default function App() {
   const getFilteredStats = (filter: DateFilter) => {
     const { start, end } = getDateBounds(filter);
     const filtered = orders.filter(o => { const t = new Date(o.createdAt).getTime(); return t >= start.getTime() && t <= end.getTime(); });
-    const revenue = filtered.filter(o => o.status === 'COMPLETED').reduce((s, o) => s + o.total, 0);
-    const baseRevenue = filter === 'today' ? 12450 : filter === 'yesterday' ? 9870 : 87340;
-    const baseOrders = filter === 'today' ? 38 : filter === 'yesterday' ? 31 : 284;
-    return { orderCount: baseOrders + filtered.length, revenue: Math.round(baseRevenue + revenue) };
+    const revenue = filtered.reduce((s, o) => s + (o.total ?? 0), 0);
+    return { orderCount: filtered.length, revenue: Math.round(revenue) };
   };
 
   const filteredStats = getFilteredStats(dateFilter);
@@ -209,8 +207,8 @@ export default function App() {
   };
 
   const getStats = (): KitchenStats => {
-    const completedCount = orders.filter(o => o.status === 'COMPLETED').length + 142;
-    const todayRevenue = 12450 + Math.round(orders.filter(o => o.status === 'COMPLETED').reduce((s, o) => s + o.total, 0));
+    const completedCount = orders.filter(o => o.status === 'COMPLETED').length;
+    const todayRevenue = Math.round(orders.filter(o => o.status === 'COMPLETED').reduce((s, o) => s + o.total, 0));
     return {
       activeCount: orders.filter(o => o.status === 'PREPARING' || o.status === 'NEW').length,
       pendingCount: orders.filter(o => o.status === 'NEW').length,
@@ -431,7 +429,7 @@ export default function App() {
                   return (
                     <button key={tab} onClick={() => setOrdersTab(tab)} className={`flex-1 py-3 px-1 flex flex-col items-center font-bold tracking-widest text-[10px] border-b-2 uppercase transition-all ${ordersTab === tab ? 'border-[#a04100] text-[#a04100] bg-[#a04100]/5' : 'border-transparent text-gray-500'}`}>
                       <span>{tab}</span>
-                      <span className={`text-[9px] font-extrabold mt-0.5 ${colors[tab]}`}>({tab === 'COMPLETED' ? count + 142 : count})</span>
+                      <span className={`text-[9px] font-extrabold mt-0.5 ${colors[tab]}`}>({count})</span>
                     </button>
                   );
                 })}
