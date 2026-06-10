@@ -2,12 +2,12 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAs_Cfj9lZOk67hSsQ92V7nCk_uLe76g9k",
-  authDomain: "aromas-kitchen-android.firebaseapp.com",
-  projectId: "aromas-kitchen-android",
-  storageBucket: "aromas-kitchen-android.firebasestorage.app",
-  messagingSenderId: "90063514909",
-  appId: "1:90063514909:web:8a15d4a3dbbea580fe05f4"
+  apiKey: "AIzaSyAbXKKPnO7iySUzcqGoZuGt-yxdX--1Heg",
+  authDomain: "aromas-794de.firebaseapp.com",
+  projectId: "aromas-794de",
+  storageBucket: "aromas-794de.firebasestorage.app",
+  messagingSenderId: "185704147372",
+  appId: "1:185704147372:web:5ac631be45c85c7949b209"
 };
 
 const app = initializeApp(firebaseConfig);
