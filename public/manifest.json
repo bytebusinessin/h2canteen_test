@@ -3,6 +3,7 @@
   "short_name": "Aromas",
   "start_url": "/",
   "display": "standalone",
+   "display_override": ["standalone", "fullscreen"]
   "background_color": "#fdf8fd",
   "theme_color": "#ff6b00",
   "icons": [
