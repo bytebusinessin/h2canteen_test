@@ -10,15 +10,13 @@ import {
   CheckSquare, Square, ShoppingCart, CalendarDays, Trash2, Power, Wifi
 } from 'lucide-react';
 import { ScreenType, Order, MenuItem, OrderStatus, KitchenStats } from './types';
-import { INITIAL_ORDERS } from './initialData';
+
 import { db } from './firebase';
 import { collection, doc, onSnapshot, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 
 type DateFilter = 'today' | 'yesterday' | 'month';
 type MenuType = 'online' | 'pos';
 
-// Normalise a Firestore product doc to our MenuItem shape
-// handles both field-name conventions (imageURL vs image, isAvailable vs inStock)
 function normaliseProduct(id: string, data: any): MenuItem {
   return {
     id,
@@ -28,6 +26,55 @@ function normaliseProduct(id: string, data: any): MenuItem {
     inStock: data.inStock ?? data.isAvailable ?? data.available ?? true,
     image: data.image ?? data.imageURL ?? data.imageUrl ?? '',
     isPopular: data.isPopular ?? data.popular ?? false,
+  };
+}
+
+function normaliseStatus(raw: any): OrderStatus {
+  const s = String(raw ?? '').toUpperCase();
+  if (['NEW','PENDING','PLACED','CONFIRMED'].includes(s)) return 'NEW';
+  if (['PREPARING','ACCEPTED','PROCESSING','IN_PROGRESS'].includes(s)) return 'PREPARING';
+  if (['READY','READY_FOR_PICKUP','OUT_FOR_DELIVERY'].includes(s)) return 'READY';
+  if (['COMPLETED','DELIVERED','DONE','PAID'].includes(s)) return 'COMPLETED';
+  return 'NEW';
+}
+
+function normaliseOrder(id: string, data: any): Order {
+  let createdAt = '';
+  const raw = data.createdAt ?? data.created_at ?? data.timestamp ?? data.orderTime ?? data.placedAt;
+  if (raw?.toDate) createdAt = raw.toDate().toISOString();
+  else if (typeof raw === 'string') createdAt = raw;
+  else if (typeof raw === 'number') createdAt = new Date(raw).toISOString();
+  else createdAt = new Date().toISOString();
+
+  const rawItems = data.items ?? data.orderItems ?? data.cart ?? [];
+  const items = rawItems.map((item: any, i: number) => ({
+    id: item.id ?? item.productId ?? String(i),
+    name: item.name ?? item.productName ?? item.title ?? '',
+    category: item.category ?? '',
+    price: item.price ?? item.unitPrice ?? 0,
+    qty: item.qty ?? item.quantity ?? item.count ?? 1,
+    image: item.image ?? item.imageURL ?? item.imageUrl ?? '',
+  }));
+
+  const subtotal = data.subtotal ?? data.subTotal ?? data.itemTotal ?? 0;
+  const taxes = data.taxes ?? data.tax ?? data.gst ?? 0;
+  const total = data.total ?? data.totalAmount ?? data.amount ?? data.grandTotal ?? (subtotal + taxes);
+
+  return {
+    id,
+    customerName: data.customerName ?? data.customer?.name ?? data.userName ?? data.name ?? 'Customer',
+    customerPhone: data.customerPhone ?? data.customer?.phone ?? data.phone ?? data.mobile ?? '',
+    customerAddress: data.customerAddress ?? data.customer?.address ?? data.address ?? data.deliveryAddress ?? '',
+    items,
+    subtotal,
+    taxes,
+    total,
+    status: normaliseStatus(data.status ?? data.orderStatus),
+    type: (data.type ?? data.orderType ?? 'ONLINE').toString().toUpperCase() as any,
+    time: data.time ?? data.displayTime ?? '',
+    createdAt,
+    note: data.note ?? data.instructions ?? data.specialInstructions ?? '',
+    checkedItems: data.checkedItems ?? [],
   };
 }
 
@@ -42,10 +89,8 @@ export default function App() {
   // Real-time orders listener
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'orders'), (snapshot) => {
-      if (snapshot.empty) {
-        INITIAL_ORDERS.forEach(order => setDoc(doc(db, 'orders', order.id), order));
-      } else {
-        setOrders(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Order)));
+      if (!snapshot.empty) {
+        setOrders(snapshot.docs.map(d => normaliseOrder(d.id, d.data())));
       }
     });
     return () => unsub();
