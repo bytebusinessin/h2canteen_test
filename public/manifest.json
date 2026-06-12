@@ -1,11 +1,12 @@
 {
-  "name": "Aromas Dhaba",
-  "short_name": "Aromas",
+  "name": "Bytebiz Vendor",
+  "short_name": "Bytebiz",
   "start_url": "/",
   "display": "standalone",
-   "display_override": ["standalone", "fullscreen"]
-  "background_color": "#fdf8fd",
-  "theme_color": "#ff6b00",
+  "display_override": ["standalone", "fullscreen"],
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "orientation": "portrait",
   "icons": [
     {
       "src": "/icon-192.png",

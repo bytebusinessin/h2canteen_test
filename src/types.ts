@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type ScreenType = 'dashboard' | 'orders' | 'menu' | 'settings' | 'order-details';
+export type ScreenType = 'dashboard' | 'orders' | 'history' | 'menu' | 'settings' | 'order-details';
 
 export type OrderType = 'ONLINE' | 'TAKEAWAY' | 'OFFLINE';
 
-export type OrderStatus = 'NEW' | 'PREPARING' | 'READY' | 'COMPLETED';
+export type OrderStatus = 'NEW' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED';
 
 export interface OrderItem {
   id: string;
@@ -20,6 +20,7 @@ export interface OrderItem {
 
 export interface Order {
   id: string;
+  orderId?: string;     // friendly ID e.g. "O-26060008" from Firestore doc
   customerName: string;
   customerPhone: string;
   customerAddress: string;
@@ -33,6 +34,7 @@ export interface Order {
   createdAt: string; // real Timestamp ISO String
   note?: string;
   checkedItems?: string[]; // item exact names or IDs checked off in Kitchen view
+  rawData?: any;        // full raw Firestore doc for payment details etc.
 }
 
 export interface MenuItem {
