@@ -448,14 +448,47 @@ export default function App() {
   })();
 
   const getPOSStats = (filter: DateFilter) => {
-    // Only "today" has live data from the Windows sync; everything else falls back to Firestore orders
     if (filter === 'today' && analyticsDoc && analyticsDoc.sync_date === todayISO) {
       const orderCount = analyticsDoc.pos_orders_today || 0;
       const revenue = Math.round(analyticsDoc.pos_revenue_today || 0);
       const avgOrderValue = orderCount > 0 ? Math.round(revenue / orderCount) : 0;
       return { orderCount, revenue, avgOrderValue, revenueTrend: null };
     }
-    // Fallback: compute from Firestore orders with type !== ONLINE (POS/takeaway)
+
+    // For other filters, read from the analytics days map (written by the Windows POS app)
+    if (analyticsDoc?.days) {
+      const days = analyticsDoc.days as Record<string, any>;
+      const now = new Date();
+
+      if (filter === 'yesterday') {
+        const y = new Date(now);
+        y.setDate(now.getDate() - 1);
+        const key = `${y.getFullYear()}${String(y.getMonth() + 1).padStart(2, '0')}${String(y.getDate()).padStart(2, '0')}`;
+        const dayData = days[key];
+        if (dayData) {
+          const orderCount = dayData.total_orders || 0;
+          const revenue = Math.round(dayData.total_revenue || 0);
+          return { orderCount, revenue, avgOrderValue: orderCount > 0 ? Math.round(revenue / orderCount) : 0, revenueTrend: null };
+        }
+      }
+
+      if (filter === 'month') {
+        const prefix = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+        let totalOrders = 0, totalRevenue = 0;
+        Object.entries(days).forEach(([key, d]: [string, any]) => {
+          if (key.startsWith(prefix)) { totalOrders += d.total_orders || 0; totalRevenue += d.total_revenue || 0; }
+        });
+        return { orderCount: totalOrders, revenue: Math.round(totalRevenue), avgOrderValue: totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0, revenueTrend: null };
+      }
+
+      if (filter === 'lifetime') {
+        let totalOrders = 0, totalRevenue = 0;
+        Object.values(days).forEach((d: any) => { totalOrders += d.total_orders || 0; totalRevenue += d.total_revenue || 0; });
+        return { orderCount: totalOrders, revenue: Math.round(totalRevenue), avgOrderValue: totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0, revenueTrend: null };
+      }
+    }
+
+    // Fallback: compute from Firestore orders collection
     return getFilteredStats(filter, 'POS');
   };
 
