@@ -13,9 +13,9 @@ import {
 import { ScreenType, Order, MenuItem, OrderStatus, KitchenStats } from './types';
 import { INITIAL_ORDERS } from './initialData';
 
-import { db, auth } from './firebase';
+import { db, auth, googleProvider } from './firebase';
 import { collection, doc, onSnapshot, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
-import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type DateFilter = 'today' | 'yesterday' | 'month' | 'lifetime';
@@ -184,6 +184,8 @@ export default function App() {
   const [showStoreConfirm, setShowStoreConfirm] = useState(false);
   const [editingStoreInfo, setEditingStoreInfo] = useState(false);
   const [editDraft, setEditDraft] = useState<StoreInfo>(storeInfo);
+  const [editingHours, setEditingHours] = useState(false);
+  const [hoursDraft, setHoursDraft] = useState<{ openingTime: string; closingTime: string; shifts: StoreInfo['shifts'] }>({ openingTime: storeInfo.openingTime, closingTime: storeInfo.closingTime, shifts: storeInfo.shifts });
 
   const [logoError, setLogoError] = useState(false);
 
@@ -205,21 +207,33 @@ export default function App() {
   const [notifications, setNotifications] = useState<string[]>([]);
   const knownOrderIds = useRef<Set<string>>(new Set());
 
-  // ── Firebase Auth — sign in anonymously so Firestore rules (isSignedIn) pass ──
+  // ── Firebase Auth ──
   const [authReady, setAuthReady] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setAuthReady(true);
-      } else {
-        signInAnonymously(auth).catch(() => {
-          // If anonymous auth fails (e.g. not enabled), still allow reads
-          setAuthReady(true);
-        });
-      }
+      setCurrentUser(user);
+      setAuthReady(!!user);
     });
     return () => unsub();
   }, []);
+
+  const handleGoogleSignIn = async () => {
+    setAuthLoading(true);
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (e: any) {
+      if (e.code !== 'auth/popup-closed-by-user') console.error(e);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await signOut(auth);
+  };
 
   // ── Persist nav state ──
   useEffect(() => { localStorage.setItem('aromas_screen', activeScreen); }, [activeScreen]);
@@ -272,12 +286,16 @@ export default function App() {
       if (snap.exists()) {
         const d = snap.data();
         if (typeof d.isOpen === 'boolean') setStoreOpen(d.isOpen);
-        const shiftsMap = d.shifts ?? {};
-        const shifts = Object.values(shiftsMap)
-          .filter((s: any) => s && s.name)
-          .map((s: any) => ({ name: s.name ?? '', startTime: s.startTime ?? '', endTime: s.endTime ?? '' }))
-          .sort((a: any, b: any) => a.startTime.localeCompare(b.startTime));
-        setStoreInfo({
+        const shiftsRaw = Array.isArray(d.shifts) ? d.shifts : Object.values(d.shifts ?? {});
+        const shiftsDeduped = Object.values(
+          Object.fromEntries(
+            (shiftsRaw as any[])
+              .filter((s: any) => s && s.name)
+              .map((s: any) => [s.name, { name: s.name ?? '', startTime: s.startTime ?? '', endTime: s.endTime ?? '' }])
+          )
+        ) as { name: string; startTime: string; endTime: string }[];
+        const shifts = shiftsDeduped.sort((a, b) => a.startTime.localeCompare(b.startTime));
+        const newStoreInfo = {
           storeName: d.storeName ?? 'Aromas Dhaba',
           phone: d.vendorPhone ?? d.phone ?? '',
           address: [d.streetArea, d.city].filter(Boolean).join(', '),
@@ -292,7 +310,9 @@ export default function App() {
           openingTime: d.openingTime ?? d.businessHours?.openingTime ?? '',
           closingTime: d.closingTime ?? d.businessHours?.closingTime ?? '',
           shifts,
-        });
+        };
+        setStoreInfo(newStoreInfo);
+        setHoursDraft(prev => editingHours ? prev : { openingTime: newStoreInfo.openingTime, closingTime: newStoreInfo.closingTime, shifts: newStoreInfo.shifts });
         setStoreLoaded(true);
       }
     });
@@ -320,6 +340,7 @@ export default function App() {
     });
     return () => unsub();
   }, []);
+
 
   // POS analytics — reads the first vendor document in the analytics collection
   useEffect(() => {
@@ -645,6 +666,28 @@ export default function App() {
     } catch (e) { console.error(e); }
   };
 
+  const computedHoursFromShifts = (shifts: StoreInfo['shifts']) => {
+    const valid = shifts.filter(s => s.startTime && s.endTime);
+    if (valid.length === 0) return { openingTime: '', closingTime: '' };
+    const opens = valid.map(s => s.startTime).sort()[0];
+    const closes = valid.map(s => s.endTime).sort().reverse()[0];
+    return { openingTime: opens, closingTime: closes };
+  };
+
+  const handleSaveHours = async () => {
+    try {
+      const { openingTime, closingTime } = computedHoursFromShifts(hoursDraft.shifts);
+      const shiftsMap = Object.fromEntries(hoursDraft.shifts.map(s => [s.name, { name: s.name, startTime: s.startTime, endTime: s.endTime }]));
+      await setDoc(doc(db, 'settings', 'storeSettings'), {
+        openingTime,
+        closingTime,
+        shifts: shiftsMap,
+      }, { merge: true });
+      setStoreInfo(prev => ({ ...prev, openingTime, closingTime, shifts: hoursDraft.shifts }));
+      setEditingHours(false);
+    } catch (e) { console.error(e); }
+  };
+
   const handleResetData = () => {
     if (window.confirm('Reset kitchen dashboard?')) {
       setOrders(INITIAL_ORDERS);
@@ -683,6 +726,55 @@ export default function App() {
   };
 
   // ─────────────────────────────────────────────────────────────────────────
+  // ── Login gate ──
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-[#fdf8fd] flex flex-col items-center justify-center px-6">
+        <div className="w-full max-w-sm flex flex-col items-center gap-8">
+          {/* Logo */}
+          <div className="flex flex-col items-center gap-3">
+            {logoError
+              ? <Store className="w-16 h-16 text-[#a04100]" />
+              : <img src="/logo.png" alt="Byte Business" className="h-20 w-auto object-contain" onError={() => setLogoError(true)} />
+            }
+            <div className="text-center">
+              <h1 className="text-2xl font-black text-[#1c1b1f] tracking-tight">Byte Business</h1>
+              <p className="text-sm text-gray-400 mt-1 font-medium">Vendor Kitchen Dashboard</p>
+            </div>
+          </div>
+
+          {/* Card */}
+          <div className="w-full bg-white rounded-3xl border border-gray-100 shadow-sm p-6 flex flex-col gap-4">
+            <div className="text-center">
+              <p className="text-sm font-bold text-[#1c1b1f]">Sign in to continue</p>
+              <p className="text-xs text-gray-400 mt-1">Use your Google account associated with this store</p>
+            </div>
+
+            <button
+              onClick={handleGoogleSignIn}
+              disabled={authLoading}
+              className="w-full flex items-center justify-center gap-3 py-3.5 px-4 bg-white border-2 border-gray-200 rounded-2xl text-sm font-bold text-[#1c1b1f] active:scale-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed hover:border-[#ff6b00]/40 hover:bg-orange-50"
+            >
+              {authLoading ? (
+                <div className="w-5 h-5 border-2 border-[#ff6b00] border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+              )}
+              {authLoading ? 'Signing in…' : 'Continue with Google'}
+            </button>
+          </div>
+
+          <p className="text-[11px] text-gray-400 text-center">Only authorised vendor accounts can access this dashboard.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-[#fdf8fd] text-[#1c1b1f] font-sans min-h-screen relative pb-24 md:pb-28">
 
@@ -917,7 +1009,7 @@ export default function App() {
             ORDERS
         ══════════════════════════════════════════════ */}
         {activeScreen === 'orders' && (() => {
-          const cancelledOrders = orders.filter(o => o.status === 'CANCELLED');
+          const cancelledOrders = orders.filter(o => o.status === 'CANCELLED').sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
           const statusMeta: Record<string, { dot: string; text: string; label: string }> = {
             NEW:       { dot: 'bg-[#ff6b00]', text: 'text-[#ff6b00]', label: 'Pending' },
             PREPARING: { dot: 'bg-[#a04100]', text: 'text-[#a04100]', label: 'Preparing' },
@@ -986,12 +1078,15 @@ export default function App() {
                   )}
 
                   <div className="flex flex-col gap-3">
-                    {orders.filter(o => o.status === ordersTab).length === 0 ? (
-                      <div className="bg-white rounded-xl border border-dashed border-gray-200 p-12 text-center">
-                        <p className="text-xs text-gray-400 font-semibold">No {ordersTab.toLowerCase()} orders</p>
-                        <p className="text-[10px] text-gray-400 mt-1">Orders from Firebase will appear here in real time</p>
-                      </div>
-                    ) : orders.filter(o => o.status === ordersTab).map(order => renderCard(order))}
+                    {(() => {
+                      const filtered = orders.filter(o => o.status === ordersTab).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+                      return filtered.length === 0 ? (
+                        <div className="bg-white rounded-xl border border-dashed border-gray-200 p-12 text-center">
+                          <p className="text-xs text-gray-400 font-semibold">No {ordersTab.toLowerCase()} orders</p>
+                          <p className="text-[10px] text-gray-400 mt-1">Orders from Firebase will appear here in real time</p>
+                        </div>
+                      ) : filtered.map(order => renderCard(order));
+                    })()}
                   </div>
                 </>
               ) : (
@@ -1423,12 +1518,31 @@ export default function App() {
             </div>
 
             {/* Account */}
-            {vendorEmail && (
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 flex items-center justify-between">
-                <p className="text-xs text-gray-400 font-semibold">Logged in as</p>
-                <p className="text-xs font-bold text-[#1c1b1f]">{vendorEmail}</p>
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-50">
+                <p className="text-sm font-bold text-[#1c1b1f]">Account</p>
               </div>
-            )}
+              <div className="px-4 py-4 flex items-center gap-3">
+                {currentUser?.photoURL
+                  ? <img src={currentUser.photoURL} alt="" className="w-11 h-11 rounded-full object-cover shrink-0 ring-2 ring-gray-100" />
+                  : <div className="w-11 h-11 rounded-full bg-[#fdf3e7] flex items-center justify-center shrink-0 ring-2 ring-gray-100">
+                      <span className="text-base font-black text-[#a04100]">{(currentUser?.displayName || currentUser?.email || '?')[0].toUpperCase()}</span>
+                    </div>
+                }
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-[#1c1b1f] truncate">{currentUser?.displayName || 'Vendor'}</p>
+                  <p className="text-xs text-gray-400 truncate">{currentUser?.email}</p>
+                </div>
+              </div>
+              <div className="px-4 pb-4">
+                <button
+                  onClick={handleSignOut}
+                  className="w-full py-2.5 rounded-xl bg-red-50 text-red-500 text-xs font-bold active:bg-red-100 transition-colors"
+                >
+                  Sign out
+                </button>
+              </div>
+            </div>
 
             {/* Store info */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -1512,36 +1626,84 @@ export default function App() {
             {/* Hours & shifts */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
-                <p className="text-sm font-bold text-[#1c1b1f]">Hours</p>
-                {editingStoreInfo && <span className="text-[10px] text-gray-400">editing</span>}
+                <p className="text-sm font-bold text-[#1c1b1f]">Hours & Shifts</p>
+                {editingHours ? (
+                  <div className="flex gap-2">
+                    <button onClick={() => setEditingHours(false)} className="text-[11px] font-bold text-gray-400 px-3 py-1 rounded-lg border border-gray-200">Cancel</button>
+                    <button onClick={handleSaveHours} className="text-[11px] font-bold text-white bg-[#ff6b00] px-3 py-1 rounded-lg">Save</button>
+                  </div>
+                ) : (
+                  <button onClick={() => { setHoursDraft({ openingTime: storeInfo.openingTime, closingTime: storeInfo.closingTime, shifts: storeInfo.shifts }); setEditingHours(true); }} className="text-[11px] font-bold text-[#ff6b00] px-3 py-1 rounded-lg border border-[#ff6b00]/30">Edit</button>
+                )}
               </div>
-              <div className="flex divide-x divide-gray-50">
-                <div className="flex-1 px-4 py-3">
-                  <span className="text-[10px] text-gray-400 font-semibold block mb-1">Opens</span>
-                  {editingStoreInfo ? (
-                    <input className="w-full text-sm font-black text-[#a04100] bg-gray-50 rounded-lg px-2 py-1 border border-gray-100 outline-none focus:border-[#ff6b00]" placeholder="e.g. 09:00" value={editDraft.openingTime} onChange={e => setEditDraft(d => ({ ...d, openingTime: e.target.value }))} />
-                  ) : (
-                    <span className="text-sm font-black text-[#a04100]">{storeInfo.openingTime || '—'}</span>
-                  )}
-                </div>
-                <div className="flex-1 px-4 py-3">
-                  <span className="text-[10px] text-gray-400 font-semibold block mb-1">Closes</span>
-                  {editingStoreInfo ? (
-                    <input className="w-full text-sm font-black text-[#a04100] bg-gray-50 rounded-lg px-2 py-1 border border-gray-100 outline-none focus:border-[#ff6b00]" placeholder="e.g. 22:00" value={editDraft.closingTime} onChange={e => setEditDraft(d => ({ ...d, closingTime: e.target.value }))} />
-                  ) : (
-                    <span className="text-sm font-black text-[#a04100]">{storeInfo.closingTime || '—'}</span>
-                  )}
-                </div>
-              </div>
-              {storeInfo.shifts.length > 0 && (
-                <div className="border-t border-gray-50 divide-y divide-gray-50">
-                  {storeInfo.shifts.map(s => (
-                    <div key={s.name} className="flex items-center justify-between px-4 py-2.5">
-                      <span className="text-xs text-gray-500 font-semibold">{s.name}</span>
-                      <span className="text-xs font-bold text-[#1c1b1f]">{s.startTime} – {s.endTime}</span>
+
+              {/* Opening / Closing times — derived from shifts */}
+              {(() => {
+                const { openingTime, closingTime } = editingHours
+                  ? computedHoursFromShifts(hoursDraft.shifts)
+                  : { openingTime: storeInfo.openingTime, closingTime: storeInfo.closingTime };
+                return (
+                  <div className="flex divide-x divide-gray-50">
+                    <div className="flex-1 px-4 py-3">
+                      <span className="text-[10px] text-gray-400 font-semibold block mb-1">Opens</span>
+                      <span className={`text-sm font-black ${editingHours ? 'text-gray-400' : 'text-[#a04100]'}`}>{openingTime || '—'}</span>
                     </div>
-                  ))}
+                    <div className="flex-1 px-4 py-3">
+                      <span className="text-[10px] text-gray-400 font-semibold block mb-1">Closes</span>
+                      <span className={`text-sm font-black ${editingHours ? 'text-gray-400' : 'text-[#a04100]'}`}>{closingTime || '—'}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Shifts */}
+              {editingHours ? (
+                <div className="border-t border-gray-50">
+                  <div className="px-4 pt-3 pb-1">
+                    <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-widest">Shifts</p>
+                  </div>
+                  <div className="divide-y divide-gray-50">
+                    {hoursDraft.shifts.map((s, i) => (
+                      <div key={i} className="flex items-center gap-2 px-4 py-2">
+                        <input
+                          className="w-24 text-xs font-bold text-[#1c1b1f] bg-gray-50 rounded-lg px-2 py-1.5 border border-gray-100 outline-none focus:border-[#ff6b00]"
+                          placeholder="Name"
+                          value={s.name}
+                          onChange={e => setHoursDraft(d => { const sh = [...d.shifts]; sh[i] = { ...sh[i], name: e.target.value }; return { ...d, shifts: sh }; })}
+                        />
+                        <input type="time"
+                          className="flex-1 text-xs font-bold text-[#1c1b1f] bg-gray-50 rounded-lg px-2 py-1.5 border border-gray-100 outline-none focus:border-[#ff6b00]"
+                          value={s.startTime}
+                          onChange={e => setHoursDraft(d => { const sh = [...d.shifts]; sh[i] = { ...sh[i], startTime: e.target.value }; return { ...d, shifts: sh }; })}
+                        />
+                        <span className="text-[10px] text-gray-400">–</span>
+                        <input type="time"
+                          className="flex-1 text-xs font-bold text-[#1c1b1f] bg-gray-50 rounded-lg px-2 py-1.5 border border-gray-100 outline-none focus:border-[#ff6b00]"
+                          value={s.endTime}
+                          onChange={e => setHoursDraft(d => { const sh = [...d.shifts]; sh[i] = { ...sh[i], endTime: e.target.value }; return { ...d, shifts: sh }; })}
+                        />
+                        <button onClick={() => setHoursDraft(d => ({ ...d, shifts: d.shifts.filter((_, j) => j !== i) }))} className="text-red-400 text-xs font-bold px-1.5 py-1 rounded-lg active:bg-red-50">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="px-4 pb-3 pt-2">
+                    <button
+                      onClick={() => setHoursDraft(d => ({ ...d, shifts: [...d.shifts, { name: '', startTime: '', endTime: '' }] }))}
+                      className="w-full py-2 border border-dashed border-[#ff6b00]/40 rounded-xl text-xs font-bold text-[#ff6b00] active:bg-orange-50"
+                    >+ Add Shift</button>
+                  </div>
                 </div>
+              ) : (
+                storeInfo.shifts.length > 0 && (
+                  <div className="border-t border-gray-50 divide-y divide-gray-50">
+                    {storeInfo.shifts.map(s => (
+                      <div key={s.name} className="flex items-center justify-between px-4 py-2.5">
+                        <span className="text-xs text-gray-500 font-semibold">{s.name}</span>
+                        <span className="text-xs font-bold text-[#1c1b1f]">{s.startTime} – {s.endTime}</span>
+                      </div>
+                    ))}
+                  </div>
+                )
               )}
             </div>
 
