@@ -5,7 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
+    "dev:aromas": "vite --port=3000 --host=0.0.0.0 --mode aromas",
+    "dev:h2canteen": "vite --port=3000 --host=0.0.0.0 --mode h2canteen",
     "build": "vite build",
+    "build:aromas": "vite build --mode aromas",
+    "build:h2canteen": "vite build --mode h2canteen",
+    "deploy:aromas": "vite build --mode aromas && firebase deploy --config firebase.json --project aromas-794de",
+    "deploy:h2canteen": "vite build --mode h2canteen && firebase deploy --config firebase.h2canteen.json --project h2canteen-offical",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"

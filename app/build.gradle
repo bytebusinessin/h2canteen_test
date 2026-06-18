@@ -21,11 +21,11 @@ plugins {
 }
 
 def twaManifest = [
-    applicationId: 'com.aromasdhaba.app',
-    hostName: 'aromas-android-app.vercel.app', // The domain being opened in the TWA.
+    applicationId: 'com.h2canteen.vendor',
+    hostName: 'h2canteen-offical.web.app', // The domain being opened in the TWA.
     launchUrl: '/', // The start path for the TWA. Must be relative to the domain.
-    name: 'Aromas Dhaba', // The application name.
-    launcherName: 'Aromas', // The name shown on the Android Launcher.
+    name: 'H2 Canteen', // The application name.
+    launcherName: 'H2 Canteen', // The name shown on the Android Launcher.
     themeColor: '#FF6B00', // The color used for the status bar.
     themeColorDark: '#000000', // The color used for the dark status bar.
     navigationColor: '#000000', // The color used for the navigation bar.
@@ -54,7 +54,7 @@ android {
     compileSdkVersion 36
     namespace "com.aromasdhaba.app"
     defaultConfig {
-        applicationId "com.aromasdhaba.app"
+        applicationId "com.h2canteen.vendor"
         minSdkVersion 21
         targetSdkVersion 35
         versionCode 1
@@ -76,12 +76,12 @@ android {
             // The URL the Web Manifest for the Progressive Web App that the TWA points to. This
             // is used by Chrome OS and Meta Quest to open the Web version of the PWA instead of
             // the TWA, as it will probably give a better user experience for non-mobile devices.
-            resValue "string", "webManifestUrl", 'https://aromas-android-app.vercel.app/manifest.json'
+            resValue "string", "webManifestUrl", 'https://h2canteen-offical.web.app/manifest.json'
         
 
         
             // This is used by Meta Quest.
-            resValue "string", "fullScopeUrl", 'https://aromas-android-app.vercel.app/'
+            resValue "string", "fullScopeUrl", 'https://h2canteen-offical.web.app/'
         
 
         

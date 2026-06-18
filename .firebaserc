@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "aromas-794de"
+    "default": "aromas-794de",
+    "aromas": "aromas-794de",
+    "h2canteen": "h2canteen-offical"
   }
 }

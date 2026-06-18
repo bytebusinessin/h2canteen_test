@@ -17,6 +17,8 @@ import { db, auth, googleProvider } from './firebase';
 import { collection, doc, onSnapshot, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
 
+const LS = import.meta.env.VITE_LS_PREFIX || 'vendor';
+
 // ── Types ──────────────────────────────────────────────────────────────────
 type DateFilter = 'today' | 'yesterday' | 'month' | 'lifetime';
 type HistoryDateFilter = 'all' | '7days' | '30days';
@@ -146,7 +148,7 @@ export default function App() {
   const [storeLoaded, setStoreLoaded] = useState(false);
   const [menuType, setMenuType] = useState<MenuType>('online');
   const [storeInfo, setStoreInfo] = useState<StoreInfo>({
-    storeName: 'Aromas Dhaba',
+    storeName: import.meta.env.VITE_STORE_NAME || 'My Store',
     phone: '',
     address: '',
     city: '',
@@ -164,9 +166,9 @@ export default function App() {
   const [vendorEmail, setVendorEmail] = useState('');
 
   // ── UI state ──
-  const [activeScreen, setActiveScreen] = useState<ScreenType>(() => (localStorage.getItem('aromas_screen') as ScreenType) || 'dashboard');
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(() => localStorage.getItem('aromas_selected_order_id') || null);
-  const [ordersTab, setOrdersTab] = useState<OrderStatus>(() => (localStorage.getItem('aromas_orders_tab') as OrderStatus) || 'NEW');
+  const [activeScreen, setActiveScreen] = useState<ScreenType>(() => (localStorage.getItem(`${LS}_screen`) as ScreenType) || 'dashboard');
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(() => localStorage.getItem(`${LS}_selected_order_id`) || null);
+  const [ordersTab, setOrdersTab] = useState<OrderStatus>(() => (localStorage.getItem(`${LS}_orders_tab`) as OrderStatus) || 'NEW');
   const [ordersTopTab, setOrdersTopTab] = useState<'live' | 'cancelled'>('live');
   const [dateFilter, setDateFilter] = useState<DateFilter>('today');
   const [dashboardView, setDashboardView] = useState<'online' | 'pos'>('online');
@@ -236,12 +238,12 @@ export default function App() {
   };
 
   // ── Persist nav state ──
-  useEffect(() => { localStorage.setItem('aromas_screen', activeScreen); }, [activeScreen]);
+  useEffect(() => { localStorage.setItem(`${LS}_screen`, activeScreen); }, [activeScreen]);
   useEffect(() => {
-    if (selectedOrderId) localStorage.setItem('aromas_selected_order_id', selectedOrderId);
-    else localStorage.removeItem('aromas_selected_order_id');
+    if (selectedOrderId) localStorage.setItem(`${LS}_selected_order_id`, selectedOrderId);
+    else localStorage.removeItem(`${LS}_selected_order_id`);
   }, [selectedOrderId]);
-  useEffect(() => { localStorage.setItem('aromas_orders_tab', ordersTab); }, [ordersTab]);
+  useEffect(() => { localStorage.setItem(`${LS}_orders_tab`, ordersTab); }, [ordersTab]);
 
   // ── Firebase listeners ──
   useEffect(() => {
@@ -296,7 +298,7 @@ export default function App() {
         ) as { name: string; startTime: string; endTime: string }[];
         const shifts = shiftsDeduped.sort((a, b) => a.startTime.localeCompare(b.startTime));
         const newStoreInfo = {
-          storeName: d.storeName ?? 'Aromas Dhaba',
+          storeName: d.storeName ?? (import.meta.env.VITE_STORE_NAME || 'My Store'),
           phone: d.vendorPhone ?? d.phone ?? '',
           address: [d.streetArea, d.city].filter(Boolean).join(', '),
           city: d.city ?? '',
@@ -738,7 +740,7 @@ export default function App() {
               : <img src="/logo.png" alt="Byte Business" className="h-20 w-auto object-contain" onError={() => setLogoError(true)} />
             }
             <div className="text-center">
-              <h1 className="text-2xl font-black text-[#1c1b1f] tracking-tight">Byte Business</h1>
+              <h1 className="text-2xl font-black text-[#1c1b1f] tracking-tight">{import.meta.env.VITE_APP_TITLE || 'Byte Business'}</h1>
               <p className="text-sm text-gray-400 mt-1 font-medium">Vendor Kitchen Dashboard</p>
             </div>
           </div>
@@ -850,9 +852,9 @@ export default function App() {
               <p className="text-sm font-bold text-[#1c1b1f] mb-0.5">Share link on WhatsApp</p>
               <p className="text-xs text-gray-400 mb-3">Your customers can visit your online store and place orders from this link.</p>
               <div className="flex items-center gap-2">
-                <span className="flex-1 text-sm font-semibold text-[#a04100] truncate underline underline-offset-2">aromadhaba.in</span>
+                <span className="flex-1 text-sm font-semibold text-[#a04100] truncate underline underline-offset-2">{import.meta.env.VITE_STORE_URL || ''}</span>
                 <a
-                  href={`https://wa.me/?text=${encodeURIComponent('Order from Aromas IIM Mumbai: https://aromadhaba.in')}`}
+                  href={`https://wa.me/?text=${encodeURIComponent(import.meta.env.VITE_WHATSAPP_TEXT || '')}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500 text-white text-xs font-bold rounded-xl active:scale-95 flex-shrink-0"

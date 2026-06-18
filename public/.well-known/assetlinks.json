@@ -2,7 +2,7 @@
   "relation": ["delegate_permission/common.handle_all_urls"],
   "target": {
     "namespace": "android_app",
-    "package_name": "com.bytebiz.vendor",
+    "package_name": "com.h2canteen.vendor",
     "sha256_cert_fingerprints": ["DC:7D:0D:F9:3C:B3:D3:A6:F1:09:75:18:AE:20:A2:14:9C:0A:7C:7B:78:A9:52:05:9A:A9:F6:D3:BB:0D:60:28"]
   }
 }]
